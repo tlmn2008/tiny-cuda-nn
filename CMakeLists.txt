@@ -152,6 +152,15 @@ else()
 	TCNN_AUTODETECT_CUDA_ARCHITECTURES(CMAKE_CUDA_ARCHITECTURES)
 endif()
 
+# Iluvatar CoreX (ivcore11): CMAKE_CUDA_ARCHITECTURES is the non-numeric token
+# "ivcore11", so the numeric NVIDIA arch-clamping logic below does not apply.
+# The device compiles with __CUDA_ARCH__=300 but the BI-V150 hardware supports
+# fp16; we pin the logical MIN_GPU_ARCH to 60 (half precision, no tensor cores,
+# CUTLASS SIMT path) which avoids the fully-fused MLP that relies on NV-only
+# mma.sync/wmma PTX inline asm unsupported by the ivcore11 backend.
+if (CMAKE_CUDA_COMPILER_ID STREQUAL "ILUVATAR")
+	set(MIN_GPU_ARCH 60)
+else()
 # If the CUDA version does not support the chosen architecture, target
 # the latest supported one instead.
 if (CUDA_VERSION VERSION_LESS 11.0)
@@ -201,6 +210,7 @@ list(SORT CMAKE_CUDA_ARCHITECTURES COMPARE NATURAL ORDER ASCENDING)
 list(GET CMAKE_CUDA_ARCHITECTURES 0 MIN_GPU_ARCH)
 
 string(REPLACE "-virtual" "" MIN_GPU_ARCH "${MIN_GPU_ARCH}")
+endif()
 
 if (MIN_GPU_ARCH EQUAL 61 OR MIN_GPU_ARCH LESS_EQUAL 52)
     set(TCNN_HALF_PRECISION_DEFAULT OFF)
@@ -277,7 +287,17 @@ if (TCNN_LINK_CUDA)
 	endif()
 endif()
 
-if (MSVC)
+if (CMAKE_CUDA_COMPILER_ID STREQUAL "ILUVATAR")
+	# Iluvatar CoreX uses a clang++ front-end. nvcc-only flags must be translated:
+	#  * -Xcompiler=<flag> (equals form) is rejected -> pass host flag directly
+	#  * -Xcudafe / --use_fast_math / --extended-lambda / --expt-relaxed-constexpr
+	#    are nvcc-only; clang enables extended lambdas & relaxed constexpr natively
+	#    so they are simply dropped (see iluvatar-cuda-base nvcc-flag-translation).
+	list(APPEND CUDA_NVCC_FLAGS "-Wno-float-conversion")
+	list(APPEND CUDA_NVCC_FLAGS "-fno-strict-aliasing")
+	list(APPEND CUDA_NVCC_FLAGS "-Wno-unknown-cuda-version")
+	list(APPEND CUDA_NVCC_FLAGS "-Wno-deprecated-declarations")
+elseif (MSVC)
 	list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=/bigobj")
 	list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=/Zc:preprocessor")
 else()
@@ -285,11 +305,13 @@ else()
 	list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=-fno-strict-aliasing")
 	list(APPEND CUDA_NVCC_FLAGS "-Xcudafe=--diag_suppress=unrecognized_gcc_pragma")
 endif()
-if (TCNN_BUILD_USE_FAST_MATH)
+if (TCNN_BUILD_USE_FAST_MATH AND NOT CMAKE_CUDA_COMPILER_ID STREQUAL "ILUVATAR")
 	list(APPEND CUDA_NVCC_FLAGS "--use_fast_math")
 endif()
-list(APPEND CUDA_NVCC_FLAGS "--extended-lambda")
-list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr")
+if (NOT CMAKE_CUDA_COMPILER_ID STREQUAL "ILUVATAR")
+	list(APPEND CUDA_NVCC_FLAGS "--extended-lambda")
+	list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr")
+endif()
 
 
 ###############################################################################

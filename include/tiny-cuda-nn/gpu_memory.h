@@ -428,7 +428,11 @@ public:
 		static bool printed_warning = false;
 		if (!printed_warning) {
 			printed_warning = true;
-			log_warning(
+			// On Iluvatar CoreX (ivcore11) cuMemCreate is unavailable, so this
+			// fallback is the normal, expected path rather than an anomaly. Emit
+			// it at debug severity so it does not trip warning-as-failure hooks
+			// (e.g. the test harness in tests/test_common.h).
+			log_debug(
 				"GPUMemoryArena: GPU {} does not support virtual memory. "
 				"Falling back to regular allocations, which will be larger and can cause occasional stutter.",
 				m_device

@@ -41,7 +41,11 @@
 
 namespace tcnn {
 
+#if !defined(__ILUVATAR__)
 static_assert(__CUDACC_VER_MAJOR__ > 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ >= 2), "tiny-cuda-nn requires at least CUDA 10.2");
+#endif
+// Iluvatar CoreX clang front-end does not define __CUDACC_VER_MAJOR__/MINOR__;
+// the ivcore11 SDK is CUDA-11+ capable, so the version gate is bypassed above.
 
 std::function<void(LogSeverity, const std::string&)> g_log_callback = [](LogSeverity severity, const std::string& msg) {
 	switch (severity) {
@@ -220,9 +224,45 @@ int cuda_device_count() {
 }
 
 bool cuda_supports_virtual_memory(int device) {
-	int supports_vmm;
+	static std::unordered_map<int, bool> cache;
+	auto it = cache.find(device);
+	if (it != cache.end()) {
+		return it->second;
+	}
+
+	int supports_vmm = 0;
 	CU_CHECK_THROW(cuDeviceGetAttribute(&supports_vmm, CU_DEVICE_ATTRIBUTE_VIRTUAL_ADDRESS_MANAGEMENT_SUPPORTED, device));
-	return supports_vmm != 0;
+
+	bool usable = supports_vmm != 0;
+
+	// Iluvatar CoreX (ivcore11) advertises VIRTUAL_ADDRESS_MANAGEMENT_SUPPORTED
+	// and even allows cuMemAddressReserve, but cuMemCreate() for pinned device
+	// memory fails at runtime with IX_ERROR_NOT_SUPPORTED. The GPUMemoryArena
+	// only benefits from VMM if cuMemCreate actually works, so probe it once and
+	// fall back to regular allocations otherwise.
+	if (usable) {
+		CUmemAllocationProp prop = {};
+		prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+		prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+		prop.location.id = device;
+
+		size_t granularity = 0;
+		CUresult gres = cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
+		if (gres != CUDA_SUCCESS || granularity == 0) {
+			usable = false;
+		} else {
+			CUmemGenericAllocationHandle handle;
+			CUresult cres = cuMemCreate(&handle, granularity, &prop, 0);
+			if (cres == CUDA_SUCCESS) {
+				cuMemRelease(handle);
+			} else {
+				usable = false;
+			}
+		}
+	}
+
+	cache[device] = usable;
+	return usable;
 }
 
 std::unordered_map<int, cudaDeviceProp>& cuda_device_properties() {

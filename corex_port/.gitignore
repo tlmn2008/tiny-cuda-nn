@@ -1,0 +1,11 @@
+# This .gitignore lives in corex_port/, so patterns are relative to corex_port/.
+# Large / generated logs stay local; everything else in corex_port/ is committed.
+build/*.log
+env/*.log
+!env/ixsmi.log
+!env/clang_version.txt
+# NOTE: test/test.log MUST be committed (authoritative test evidence) and is
+# not matched by any rule above.
+
+# Compiled probe binaries (keep the .cu sources as evidence, drop the outputs).
+build/*.out

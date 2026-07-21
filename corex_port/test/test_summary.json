@@ -1,0 +1,48 @@
+{
+  "tests_run": 6,
+  "tests_passed": 5,
+  "tests_failed": 1,
+  "tests_skipped": 0,
+  "metrics": [
+    {
+      "name": "test_grid",
+      "metric_type": "pass_rate",
+      "value": 1.0,
+      "unit": "ratio",
+      "config": "13 assertions / 1 test case",
+      "source": "./test_grid"
+    },
+    {
+      "name": "test_encodings",
+      "metric_type": "pass_rate",
+      "value": 1.0,
+      "unit": "ratio",
+      "config": "47,186,016 assertions / 2 test cases (Identity/Frequency/OneBlob/SphericalHarmonics/Grid/Composite; inference==inference_mixed_precision==forward)",
+      "source": "./test_encodings"
+    },
+    {
+      "name": "test_jit_losses",
+      "metric_type": "pass_rate",
+      "value": 1.0,
+      "unit": "ratio",
+      "config": "2 test cases; JIT comparison self-skips (cc<75) via SUCCEED",
+      "source": "./test_jit_losses"
+    },
+    {
+      "name": "test_networks",
+      "metric_type": "pass_rate",
+      "value": 0.0,
+      "unit": "ratio",
+      "config": "CutlassMLP GEMM livelocks (100% util, no completion); killed by 120s timeout. See blockers.json id=1 (terminal).",
+      "source": "./test_networks"
+    },
+    {
+      "name": "cuda_compute_capability_reported",
+      "metric_type": "other",
+      "value": 71.0,
+      "unit": "cc_x10",
+      "device": "Iluvatar BI-V150 (GPU 1)",
+      "source": "runtime (cuda_supported_compute_capability)"
+    }
+  ]
+}

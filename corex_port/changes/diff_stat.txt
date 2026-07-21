@@ -1,0 +1,19 @@
+# Top-level tiny-cuda-nn changes
+ CMakeLists.txt                       | 30 +++++++++++++--
+ benchmarks/image/bench_ours.cu       | 71 ++++++++++++++++++++--------------
+ benchmarks/mlp/bench_mlp_ours.cu     |  7 +++-
+ dependencies/cutlass                 |  0
+ include/tiny-cuda-nn/common.h        |  4 +-
+ include/tiny-cuda-nn/common_device.h |  6 +++
+ include/tiny-cuda-nn/gpu_memory.h    |  6 ++-
+ include/tiny-cuda-nn/vec.h           |  6 +--
+ samples/mlp_learning_an_image.cu     | 74 ++++++++++++++++++++++--------------
+ src/common_host.cu                   | 44 ++++++++++++++++++++-
+ tests/test_jit_losses.cu             |  7 ++++
+ 11 files changed, 184 insertions(+), 71 deletions(-)
+
+# Submodule dependencies/cutlass changes (see changes/cutlass.patch)
+ include/cute/arch/util.hpp         |  13 +++
+ include/cutlass/arch/memory.h      | 169 +++++++++++++++++++++++++++++++------
+ include/cutlass/arch/memory_sm75.h |  10 +++
+ 3 files changed, 168 insertions(+), 24 deletions(-)

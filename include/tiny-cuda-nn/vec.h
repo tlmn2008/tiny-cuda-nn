@@ -209,7 +209,7 @@ template <typename T> TCNN_HOST_DEVICE T isfinite(T a) {
 inline TCNN_HOST_DEVICE float fma(float a, float b, float c) { return fmaf(a, b, c); }
 #ifdef __CUDACC__
 inline TCNN_DEVICE __half fma(__half a, __half b, __half c) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600) || defined(__ILUVATAR__)
 	return __hfma(a, b, c);
 #else
 	return fmaf(a, b, c);
@@ -324,7 +324,7 @@ TCNN_DEVICE void atomic_add_gmem(float* dst, const tvec<float, N, A>& a) {
 	}
 }
 
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600 // atomicAdd(__half2) is only supported with compute capability 60 and above
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600) || defined(__ILUVATAR__) // atomicAdd(__half2) is only supported with compute capability 60 and above
 inline TCNN_DEVICE void atomic_add_gmem_h2(half2* addr, half2 in) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
 	int in_int = *((int*)&in);
@@ -355,7 +355,7 @@ TCNN_DEVICE void atomic_add_gmem(__half* dst, const tvec<__half, N, A>& a) {
 #undef CWISE_OP
 
 // __half2 specializations for aligned vectors with 2*N fp16 coefficients.
-#if defined(__CUDACC__) && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600
+#if defined(__CUDACC__) && ((defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600) || defined(__ILUVATAR__))
 
 #define HVEC tvec<__half, N, A>
 #define HALF_CWISE_OP(operation, type_result, expr, ...) \

@@ -1,0 +1,558 @@
+diff --git a/include/cute/arch/util.hpp b/include/cute/arch/util.hpp
+index 61417d83..ec26d24c 100644
+--- a/include/cute/arch/util.hpp
++++ b/include/cute/arch/util.hpp
+@@ -85,6 +85,19 @@
+   }
+ #endif
+ 
++#if defined(__ILUVATAR__) && defined(__CUDA_ARCH__)
++// Iluvatar CoreX (ivcore11) clang reports __clang_major__>=14 so CuTe enables
++// CUTE_CLANG_SUPPORTS_CVTA_GENERIC_TO_SHARED, but the corex clang does NOT
++// actually provide the __cvta_generic_to_shared builtin (Iluvatar SWLIB-2972).
++// ivcore11 uses a unified address space; supply a shim returning the low 32 bits
++// of the generic pointer. The CUTLASS SIMT (OpClassSimt) GEMM path used by
++// tiny-cuda-nn does not feed this token into NV shared-memory PTX, so this is a
++// safe compatibility shim for the code paths actually instantiated here.
++CUTE_DEVICE unsigned __cvta_generic_to_shared(void const* ptr) {
++  return static_cast<unsigned>(reinterpret_cast<uintptr_t>(ptr));
++}
++#endif
++
+ namespace cute
+ {
+ 
+diff --git a/include/cutlass/arch/memory.h b/include/cutlass/arch/memory.h
+index db9ad739..a047dbf7 100644
+--- a/include/cutlass/arch/memory.h
++++ b/include/cutlass/arch/memory.h
+@@ -41,6 +41,23 @@
+ namespace cutlass {
+ namespace arch {
+ 
++#if defined(__ILUVATAR__)
++// Iluvatar CoreX (ivcore11) has a unified address space in which a generic
++// pointer to __shared__ memory looks like 0xHHHHHHHH_LLLLLLLL, where the high
++// 32 bits are a per-address-space "shared window" base (identical for every
++// __shared__ object in a block) and the low 32 bits are the offset that CUTLASS
++// carries around as its uint32_t smem token (cast_smem_ptr_to_uint /
++// cutlass_get_smem_pointer). ivcore11 provides neither cvta.to.shared nor the
++// ld.shared/st.shared PTX, so the shared_load/shared_store shims below rebuild
++// the real generic pointer as (base | offset). The base is recovered at runtime
++// from a dummy __shared__ anchor (verified: all __shared__ objects share it and
++// base|offset reproduces the exact generic pointer).
++__device__ __forceinline__ uintptr_t tcnn_ivc_smem_base() {
++  __shared__ int tcnn_ivc_smem_anchor;
++  return reinterpret_cast<uintptr_t>(&tcnn_ivc_smem_anchor) & 0xffffffff00000000ull;
++}
++#endif
++
+ /////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ template <
+@@ -82,7 +99,10 @@ struct global_load<AccessType,
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   uint4 *data = reinterpret_cast<uint4 *>(&D);
+ 
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %9, 0;\n"
+@@ -107,6 +127,7 @@ struct global_load<AccessType,
+         : "l"(ptr), "r"((int)pred_guard), "r"(data[0].x), "r"(data[0].y),
+           "r"(data[0].z), "r"(data[0].w), "r"(data[1].x), "r"(data[1].y),
+           "r"(data[1].z), "r"(data[1].w), "l"(((uint8_t *)ptr) + 16));
++#endif
+   }
+ };
+ 
+@@ -119,7 +140,10 @@ struct global_load<AccessType,
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   uint4 *data = reinterpret_cast<uint4 *>(&D);
+ 
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %9, 0;\n"
+@@ -139,6 +163,7 @@ struct global_load<AccessType,
+         : "l"(ptr), "r"((int)pred_guard), "r"(data[0].x), "r"(data[0].y),
+           "r"(data[0].z), "r"(data[0].w), "r"(data[1].x), "r"(data[1].y),
+           "r"(data[1].z), "r"(data[1].w), "l"(((uint8_t *)ptr) + 16));
++#endif
+   }
+ };
+ 
+@@ -150,7 +175,10 @@ struct global_load<AccessType,
+   CUTLASS_DEVICE
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   uint4 &data = reinterpret_cast<uint4 &>(D);
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %5, 0;\n"
+@@ -166,6 +194,7 @@ struct global_load<AccessType,
+         "}\n"
+         : "=r"(data.x), "=r"(data.y), "=r"(data.z), "=r"(data.w)
+         : "l"(ptr), "r"((int)pred_guard), "r"(data.x), "r"(data.y), "r"(data.z), "r"(data.w));
++#endif
+   }
+ };
+ 
+@@ -177,7 +206,10 @@ struct global_load<AccessType,
+   CUTLASS_DEVICE
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   uint4 &data = reinterpret_cast<uint4 &>(D);
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %5, 0;\n"
+@@ -189,6 +221,7 @@ struct global_load<AccessType,
+         "}\n"
+         : "=r"(data.x), "=r"(data.y), "=r"(data.z), "=r"(data.w)
+         : "l"(ptr), "r"((int)pred_guard), "r"(data.x), "r"(data.y), "r"(data.z), "r"(data.w));
++#endif
+   }
+ };
+ 
+@@ -201,7 +234,10 @@ struct global_load<AccessType,
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   uint2 &data = reinterpret_cast<uint2 &>(D);
+ 
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %3, 0;\n"
+@@ -215,6 +251,7 @@ struct global_load<AccessType,
+         "}\n"
+         : "=r"(data.x), "=r"(data.y)
+         : "l"(ptr), "r"((int)pred_guard), "r"(data.x), "r"(data.y));
++#endif
+   }
+ };
+ 
+@@ -227,7 +264,10 @@ struct global_load<AccessType,
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   uint2 &data = reinterpret_cast<uint2 &>(D);
+ 
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %3, 0;\n"
+@@ -237,6 +277,7 @@ struct global_load<AccessType,
+         "}\n"
+         : "=r"(data.x), "=r"(data.y)
+         : "l"(ptr), "r"((int)pred_guard), "r"(data.x), "r"(data.y));
++#endif
+   }
+ };
+ 
+@@ -249,7 +290,10 @@ struct global_load<AccessType,
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   unsigned &data = reinterpret_cast<unsigned &>(D);
+ 
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %2, 0;\n"
+@@ -262,6 +306,7 @@ struct global_load<AccessType,
+         "}\n"
+         : "=r"(data)
+         : "l"(ptr), "r"((int)pred_guard), "r"(data));
++#endif
+   }
+ };
+ 
+@@ -274,7 +319,10 @@ struct global_load<AccessType,
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   unsigned &data = reinterpret_cast<unsigned &>(D);
+ 
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %2, 0;\n"
+@@ -283,6 +331,7 @@ struct global_load<AccessType,
+         "}\n"
+         : "=r"(data)
+         : "l"(ptr), "r"((int)pred_guard), "r"(data));
++#endif
+   }
+ };
+ 
+@@ -295,7 +344,10 @@ struct global_load<AccessType,
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   uint16_t &data = reinterpret_cast<uint16_t &>(D);
+ 
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %2, 0;\n"
+@@ -308,6 +360,7 @@ struct global_load<AccessType,
+         "}\n"
+         : "=h"(data)
+         : "l"(ptr), "r"((int)pred_guard), "h"(data));
++#endif
+   }
+ };
+ 
+@@ -320,7 +373,10 @@ struct global_load<AccessType,
+   global_load(AccessType &D, void const *ptr, bool pred_guard) {
+   uint16_t &data = reinterpret_cast<uint16_t &>(D);
+ 
+-    asm volatile(
++    #if defined(__ILUVATAR__)
++    if (pred_guard) { D = *reinterpret_cast<AccessType const *>(ptr); }
++#else
++asm volatile(
+         "{\n"
+         "  .reg .pred p;\n"
+         "  setp.ne.b32 p, %2, 0;\n"
+@@ -329,6 +385,7 @@ struct global_load<AccessType,
+         "}\n"
+         : "=h"(data)
+         : "l"(ptr), "r"((int)pred_guard), "h"(data));
++#endif
+   }
+ };
+ 
+@@ -366,7 +423,10 @@ struct global_store<AccessType, 64> {
+   global_store(AccessType const &D, void *ptr, bool pred_guard) {
+   uint4 const *data = reinterpret_cast<uint4 const *>(&D);
+ 
+-  asm volatile(
++  #if defined(__ILUVATAR__)
++    if (pred_guard) { *reinterpret_cast<AccessType *>(ptr) = D; }
++#else
++asm volatile(
+       "{\n"
+       "  .reg .pred p;\n"
+       "  setp.ne.b32 p, %5, 0;\n"
+@@ -383,6 +443,7 @@ struct global_store<AccessType, 64> {
+         "r"(data[2].x), "r"(data[2].y), "r"(data[2].z), "r"(data[2].w),
+         "l"(((uint8_t *)ptr) + 48),
+         "r"(data[3].x), "r"(data[3].y), "r"(data[3].z), "r"(data[3].w));
++#endif
+   }
+ };
+ 
+@@ -393,7 +454,10 @@ struct global_store<AccessType, 32> {
+   global_store(AccessType const &D, void *ptr, bool pred_guard) {
+   uint4 const *data = reinterpret_cast<uint4 const *>(&D);
+ 
+-  asm volatile(
++  #if defined(__ILUVATAR__)
++    if (pred_guard) { *reinterpret_cast<AccessType *>(ptr) = D; }
++#else
++asm volatile(
+       "{\n"
+       "  .reg .pred p;\n"
+       "  setp.ne.b32 p, %5, 0;\n"
+@@ -404,6 +468,7 @@ struct global_store<AccessType, 32> {
+       : "l"(ptr), "r"(data[0].x), "r"(data[0].y), "r"(data[0].z),
+         "r"(data[0].w), "r"((int)pred_guard), "l"(((uint8_t *)ptr) + 16),
+         "r"(data[1].x), "r"(data[1].y), "r"(data[1].z), "r"(data[1].w));
++#endif
+   }
+ };
+ 
+@@ -412,7 +477,10 @@ struct global_store<AccessType, 16> {
+   CUTLASS_DEVICE
+   global_store(AccessType const &D, void *ptr, bool pred_guard) {
+   uint4 const &data = reinterpret_cast<uint4 const &>(D);
+-  asm volatile(
++  #if defined(__ILUVATAR__)
++    if (pred_guard) { *reinterpret_cast<AccessType *>(ptr) = D; }
++#else
++asm volatile(
+       "{\n"
+       "  .reg .pred p;\n"
+       "  setp.ne.b32 p, %5, 0;\n"
+@@ -420,6 +488,7 @@ struct global_store<AccessType, 16> {
+       "}\n"
+       :
+       : "l"(ptr), "r"(data.x), "r"(data.y), "r"(data.z), "r"(data.w), "r"((int)pred_guard));
++#endif
+   }
+ };
+ 
+@@ -428,7 +497,10 @@ struct global_store<AccessType, 8> {
+   CUTLASS_DEVICE
+   global_store(AccessType const &D, void *ptr, bool pred_guard) {
+   uint2 const &data = reinterpret_cast<uint2 const &>(D);
+-  asm volatile(
++  #if defined(__ILUVATAR__)
++    if (pred_guard) { *reinterpret_cast<AccessType *>(ptr) = D; }
++#else
++asm volatile(
+       "{\n"
+       "  .reg .pred p;\n"
+       "  setp.ne.b32 p, %3, 0;\n"
+@@ -436,6 +508,7 @@ struct global_store<AccessType, 8> {
+       "}\n"
+       :
+       : "l"(ptr), "r"(data.x), "r"(data.y), "r"((int)pred_guard));
++#endif
+   }
+ };
+ 
+@@ -444,7 +517,10 @@ struct global_store<AccessType, 4> {
+   CUTLASS_DEVICE
+   global_store(AccessType const &D, void *ptr, bool pred_guard) {
+   uint32_t const &data = reinterpret_cast<uint32_t const &>(D);
+-  asm volatile(
++  #if defined(__ILUVATAR__)
++    if (pred_guard) { *reinterpret_cast<AccessType *>(ptr) = D; }
++#else
++asm volatile(
+       "{\n"
+       "  .reg .pred p;\n"
+       "  setp.ne.b32 p, %2, 0;\n"
+@@ -452,6 +528,7 @@ struct global_store<AccessType, 4> {
+       "}\n"
+       :
+       : "l"(ptr), "r"(data), "r"((int)pred_guard));
++#endif
+   }
+ };
+ 
+@@ -460,7 +537,10 @@ struct global_store<AccessType, 2> {
+   CUTLASS_DEVICE
+   global_store(AccessType const &D, void *ptr, bool pred_guard) {
+   uint16_t const &data = reinterpret_cast<uint16_t const &>(D);
+-  asm volatile(
++  #if defined(__ILUVATAR__)
++    if (pred_guard) { *reinterpret_cast<AccessType *>(ptr) = D; }
++#else
++asm volatile(
+       "{\n"
+       "  .reg .pred p;\n"
+       "  setp.ne.b32 p, %2, 0;\n"
+@@ -468,6 +548,7 @@ struct global_store<AccessType, 2> {
+       "}\n"
+       :
+       : "l"(ptr), "h"(data), "r"((int)pred_guard));
++#endif
+   }
+ };
+ 
+@@ -491,18 +572,28 @@ void shared_load(void *dst, uint32_t ptr);
+ template <>
+ CUTLASS_DEVICE
+ void shared_load<2>(void *dst, uint32_t ptr) {
+-  asm volatile("ld.shared.u16 %0, [%1];\n"
++  #if defined(__ILUVATAR__)
++    struct AccessType_ivc { unsigned char _b[2]; };
++    *reinterpret_cast<AccessType_ivc *>(dst) = *reinterpret_cast<const AccessType_ivc *>((tcnn_ivc_smem_base() | static_cast<uintptr_t>(ptr)));
++#else
++asm volatile("ld.shared.u16 %0, [%1];\n"
+     : "=h"(*reinterpret_cast<uint16_t *>(dst))
+     : "r"(ptr));
++#endif
+ }
+ 
+ /// ld.shared - 32b
+ template <>
+ CUTLASS_DEVICE
+ void shared_load<4>(void *dst, uint32_t ptr) {
+-  asm volatile("ld.shared.u32 %0, [%1];\n"
++  #if defined(__ILUVATAR__)
++    struct AccessType_ivc { unsigned char _b[4]; };
++    *reinterpret_cast<AccessType_ivc *>(dst) = *reinterpret_cast<const AccessType_ivc *>((tcnn_ivc_smem_base() | static_cast<uintptr_t>(ptr)));
++#else
++asm volatile("ld.shared.u32 %0, [%1];\n"
+     : "=r"(*reinterpret_cast<uint32_t *>(dst))
+     : "r"(ptr));
++#endif
+ }
+ 
+ /// ld.shared - 64b
+@@ -510,11 +601,16 @@ template <>
+ CUTLASS_DEVICE
+ void shared_load<8>(void *dst, uint32_t ptr) {
+   uint2 *dst_u64 = reinterpret_cast<uint2 *>(dst);
+-  asm volatile("ld.shared.v2.u32 {%0, %1}, [%2];\n"
++  #if defined(__ILUVATAR__)
++    struct AccessType_ivc { unsigned char _b[8]; };
++    *reinterpret_cast<AccessType_ivc *>(dst) = *reinterpret_cast<const AccessType_ivc *>((tcnn_ivc_smem_base() | static_cast<uintptr_t>(ptr)));
++#else
++asm volatile("ld.shared.v2.u32 {%0, %1}, [%2];\n"
+     :
+       "=r"(dst_u64->x),
+       "=r"(dst_u64->y)
+     : "r"(ptr));
++#endif
+ }
+ 
+ /// ld.shared - 128b
+@@ -522,13 +618,18 @@ template <>
+ CUTLASS_DEVICE
+ void shared_load<16>(void *dst, uint32_t ptr) {
+   uint4 *dst_u128 = reinterpret_cast<uint4 *>(dst);
+-  asm volatile("ld.shared.v4.u32 {%0, %1, %2, %3}, [%4];\n"
++  #if defined(__ILUVATAR__)
++    struct AccessType_ivc { unsigned char _b[16]; };
++    *reinterpret_cast<AccessType_ivc *>(dst) = *reinterpret_cast<const AccessType_ivc *>((tcnn_ivc_smem_base() | static_cast<uintptr_t>(ptr)));
++#else
++asm volatile("ld.shared.v4.u32 {%0, %1, %2, %3}, [%4];\n"
+     :
+       "=r"(dst_u128->x),
+       "=r"(dst_u128->y),
+       "=r"(dst_u128->z),
+       "=r"(dst_u128->w)
+     : "r"(ptr));
++#endif
+ }
+ 
+ 
+@@ -543,22 +644,32 @@ void shared_store(uint32_t ptr, void const *src);
+ template <>
+ CUTLASS_DEVICE
+ void shared_store<2>(uint32_t ptr, void const *src) {
+-  asm volatile("st.shared.u16 [%0], %1;\n"
++  #if defined(__ILUVATAR__)
++    struct AccessType_ivc { unsigned char _b[2]; };
++    *reinterpret_cast<AccessType_ivc *>((tcnn_ivc_smem_base() | static_cast<uintptr_t>(ptr))) = *reinterpret_cast<const AccessType_ivc *>(src);
++#else
++asm volatile("st.shared.u16 [%0], %1;\n"
+     : :
+     "r"(ptr),
+     "h"(*reinterpret_cast<uint16_t const *>(src))
+   );
++#endif
+ }
+ 
+ /// st.shared - 32b
+ template <>
+ CUTLASS_DEVICE
+ void shared_store<4>(uint32_t ptr, void const *src) {
+-  asm volatile("st.shared.u32 [%0], %1;\n"
++  #if defined(__ILUVATAR__)
++    struct AccessType_ivc { unsigned char _b[4]; };
++    *reinterpret_cast<AccessType_ivc *>((tcnn_ivc_smem_base() | static_cast<uintptr_t>(ptr))) = *reinterpret_cast<const AccessType_ivc *>(src);
++#else
++asm volatile("st.shared.u32 [%0], %1;\n"
+     : :
+     "r"(ptr),
+     "r"(*reinterpret_cast<uint32_t const  *>(src))
+   );
++#endif
+ }
+ 
+ /// st.shared - 64b
+@@ -566,12 +677,17 @@ template <>
+ CUTLASS_DEVICE
+ void shared_store<8>(uint32_t ptr, void const *src) {
+   uint2 const *dst_u64 = reinterpret_cast<uint2 const *>(src);
+-  asm volatile("st.shared.v2.u32 [%0], {%1, %2};\n"
++  #if defined(__ILUVATAR__)
++    struct AccessType_ivc { unsigned char _b[8]; };
++    *reinterpret_cast<AccessType_ivc *>((tcnn_ivc_smem_base() | static_cast<uintptr_t>(ptr))) = *reinterpret_cast<const AccessType_ivc *>(src);
++#else
++asm volatile("st.shared.v2.u32 [%0], {%1, %2};\n"
+     : :
+       "r"(ptr),
+       "r"(dst_u64->x),
+       "r"(dst_u64->y)
+     );
++#endif
+ }
+ 
+ /// st.shared - 128b
+@@ -579,7 +695,11 @@ template <>
+ CUTLASS_DEVICE
+ void shared_store<16>(uint32_t ptr, void const *src) {
+   uint4 const *dst_u128 = reinterpret_cast<uint4 const *>(src);
+-  asm volatile("st.shared.v4.u32 [%0], {%1, %2, %3, %4};\n"
++  #if defined(__ILUVATAR__)
++    struct AccessType_ivc { unsigned char _b[16]; };
++    *reinterpret_cast<AccessType_ivc *>((tcnn_ivc_smem_base() | static_cast<uintptr_t>(ptr))) = *reinterpret_cast<const AccessType_ivc *>(src);
++#else
++asm volatile("st.shared.v4.u32 [%0], {%1, %2, %3, %4};\n"
+     : :
+       "r"(ptr),
+       "r"(dst_u128->x),
+@@ -587,6 +707,7 @@ void shared_store<16>(uint32_t ptr, void const *src) {
+       "r"(dst_u128->z),
+       "r"(dst_u128->w)
+     );
++#endif
+ }
+ 
+ /////////////////////////////////////////////////////////////////////////////////////////////////
+diff --git a/include/cutlass/arch/memory_sm75.h b/include/cutlass/arch/memory_sm75.h
+index 6b487a73..f0ae0edd 100644
+--- a/include/cutlass/arch/memory_sm75.h
++++ b/include/cutlass/arch/memory_sm75.h
+@@ -237,6 +237,11 @@ template <typename AccessType>
+ struct shared_load_op<AccessType, 16> {
+   CUTLASS_DEVICE
+   shared_load_op(AccessType &D, void const *ptr) {
++#if defined(__ILUVATAR__)
++    // ivcore11 lacks the NV `ld.shared.v4.b32` PTX and the 32-bit shared-address
++    // model; load directly through the real generic pointer (unified addr space).
++    D = *reinterpret_cast<AccessType const *>(ptr);
++#else
+     unsigned addr = cutlass_get_smem_pointer(ptr);
+ 
+     uint4 v;
+@@ -244,6 +249,7 @@ struct shared_load_op<AccessType, 16> {
+       "=r"(v.x), "=r"(v.y), "=r"(v.z), "=r"(v.w) : "r"(addr));
+ 
+     D = reinterpret_cast<AccessType const &>(v);
++#endif
+   }
+ };
+ 
+@@ -253,6 +259,9 @@ template <typename AccessType>
+ struct shared_load_op<AccessType, 8> {
+   CUTLASS_DEVICE
+   shared_load_op(AccessType &D, void const *ptr) {
++#if defined(__ILUVATAR__)
++    D = *reinterpret_cast<AccessType const *>(ptr);
++#else
+     unsigned addr = cutlass_get_smem_pointer(ptr);
+ 
+     uint2 v;
+@@ -260,6 +269,7 @@ struct shared_load_op<AccessType, 8> {
+       "=r"(v.x), "=r"(v.y) : "r"(addr));
+ 
+     D = reinterpret_cast<AccessType const &>(v);
++#endif
+   }
+ };
+ 

@@ -1,0 +1,35 @@
+{
+  "repo_name": "tiny-cuda-nn",
+  "repo_url": "https://github.com/NVlabs/tiny-cuda-nn",
+  "source_commit": "749dd70c5afc5a9dadb85e5652ed65d55e0ba187",
+  "source_commit_date": "2026-04-21T13:57:48+02:00",
+  "source_branch": "master",
+  "migration_started_at": "2026-07-21T17:30:00Z",
+  "migration_finished_at": "2026-07-21T21:28:00Z",
+  "sdk_version": "/usr/local/corex (CoreX 4.5.0, clang++, Driver 4.5.0)",
+  "skill_version": "corex-CUDA-compatible-migration@1.0",
+
+  "compile_status": "success",
+  "test_status": "partial_pass",
+  "overall_status": "blocked",
+  "tests_run": 6,
+  "tests_passed": 5,
+  "tests_failed": 1,
+  "tests_skipped": 0,
+
+  "github": {
+    "fork_url": "https://github.com/tlmn2008/tiny-cuda-nn",
+    "branch": "corex-port",
+    "default_branch": "corex-port",
+    "default_branch_status": "not_attempted",
+    "compare_url": "https://github.com/tlmn2008/tiny-cuda-nn/compare/master...corex-port",
+    "push_commit": "",
+    "push_status": "pending",
+    "pushed_at": ""
+  },
+
+  "local_logs": {
+    "compile_log": "/home/repos/tiny-cuda-nn/corex_port/build/compile.log",
+    "test_log": "/home/repos/tiny-cuda-nn/corex_port/test/test.log"
+  }
+}

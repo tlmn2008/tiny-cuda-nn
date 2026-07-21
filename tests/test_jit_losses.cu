@@ -39,7 +39,14 @@ TEMPLATE_TEST_CASE("Losses match with and without JIT", "[loss][jit]", network_p
 	using T = TestType;
 
 	if (!supports_jit_fusion()) {
+		// Iluvatar CoreX (ivcore11) reports compute capability 71 (<75), so JIT
+		// fusion is unsupported (it relies on nvrtc-compiled fully-fused kernels
+		// that use NV-only mma PTX). The upstream guard lacks an early return, so
+		// without this the JIT-only sections below would construct a CudaRtcKernel
+		// and throw. This whole test case only compares JIT vs non-JIT, so it is
+		// legitimately skipped when JIT is unavailable.
 		SUCCEED("GPU target does not support JIT.");
+		return;
 	}
 
 	tcnn_test_setup();

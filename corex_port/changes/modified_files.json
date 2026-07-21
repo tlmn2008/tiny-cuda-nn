@@ -1,0 +1,69 @@
+{
+  "files": [
+    {
+      "path": "CMakeLists.txt",
+      "action": "edit",
+      "reason": "Detect CMAKE_CUDA_COMPILER_ID==ILUVATAR: set MIN_GPU_ARCH=60 (bypass NV numeric-arch clamping, disable fully-fused MLP, force CutlassMLP); translate nvcc-only flags (-Xcompiler=, -Xcudafe, --use_fast_math, --extended-lambda, --expt-relaxed-constexpr) to clang++-compatible forms; add -Wno-unknown-cuda-version / -Wno-deprecated-declarations."
+    },
+    {
+      "path": "include/tiny-cuda-nn/common.h",
+      "action": "edit",
+      "reason": "Guard the __CUDA_ARCH__ >= MIN_GPU_ARCH*10 static_assert with !defined(__ILUVATAR__); ivcore11 misreports __CUDA_ARCH__=300 but is fp16-capable."
+    },
+    {
+      "path": "include/tiny-cuda-nn/common_device.h",
+      "action": "edit",
+      "reason": "lane_id() uses portable __nvvm_read_ptx_sreg_laneid() on __ILUVATAR__ instead of NV '%laneid' PTX (rejected by corex clang backend)."
+    },
+    {
+      "path": "include/tiny-cuda-nn/vec.h",
+      "action": "edit",
+      "reason": "Enable fp16 intrinsics (__hfma, atomicAdd(__half2), half2 vector specializations) on __ILUVATAR__ (were gated behind __CUDA_ARCH__>=600)."
+    },
+    {
+      "path": "include/tiny-cuda-nn/gpu_memory.h",
+      "action": "edit",
+      "reason": "Downgrade the 'GPU does not support virtual memory' log_warning to log_debug so warning-as-failure test hooks are not tripped by the expected ivcore11 fallback."
+    },
+    {
+      "path": "src/common_host.cu",
+      "action": "edit",
+      "reason": "Guard the __CUDACC_VER_MAJOR__/MINOR__ static_assert with !defined(__ILUVATAR__); make cuda_supports_virtual_memory() probe cuMemGetAllocationGranularity+cuMemCreate (cached) instead of trusting the misleading device attribute (cuMemCreate returns IX_ERROR_NOT_SUPPORTED on ivcore11)."
+    },
+    {
+      "path": "tests/test_jit_losses.cu",
+      "action": "edit",
+      "reason": "Add an early 'return;' after the supports_jit_fusion() skip guard so the JIT-only test case skips cleanly on ivcore11 (cc<75) instead of constructing a CudaRtcKernel and throwing."
+    },
+    {
+      "path": "samples/mlp_learning_an_image.cu",
+      "action": "edit",
+      "reason": "Replace CUDA texture object sampling (tex2D/cudaCreateTextureObject, unavailable on ivcore11) with a manual bilinear sampler over the plain RGBA float device buffer."
+    },
+    {
+      "path": "benchmarks/image/bench_ours.cu",
+      "action": "edit",
+      "reason": "Same texture -> manual bilinear sampler replacement as the sample."
+    },
+    {
+      "path": "benchmarks/mlp/bench_mlp_ours.cu",
+      "action": "edit",
+      "reason": "Qualify RM/CM as tcnn::RM / tcnn::CM to avoid ambiguity with the global RM/CM injected by corex __clang_cuda_ivcorex_intrinsics.h."
+    },
+    {
+      "path": "dependencies/cutlass/include/cute/arch/util.hpp",
+      "action": "edit",
+      "reason": "Submodule (see changes/cutlass.patch): provide a __cvta_generic_to_shared shim (low-32-bit shared-window offset) under __ILUVATAR__."
+    },
+    {
+      "path": "dependencies/cutlass/include/cutlass/arch/memory.h",
+      "action": "edit",
+      "reason": "Submodule (see changes/cutlass.patch): neutralize NV-only global/shared ld/st PTX with generic C++; reconstruct the real shared pointer as (smem_base()|offset) since ivcore11 shared generic pointers carry a nonzero high-32-bit window base."
+    },
+    {
+      "path": "dependencies/cutlass/include/cutlass/arch/memory_sm75.h",
+      "action": "edit",
+      "reason": "Submodule (see changes/cutlass.patch): shared_load_op<8>/<16> load directly through the real generic pointer instead of NV ld.shared.v4.b32 (invalid instruction on ivcore11)."
+    }
+  ]
+}

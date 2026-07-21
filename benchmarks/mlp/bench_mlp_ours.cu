@@ -78,8 +78,11 @@ int main(int argc, char* argv[]) {
 				const uint32_t n_output_dims = dim;
 
 				// Input. Most efficient in RM layout when used with JIT, CM layout otherwise.
-				GPUMatrixDynamic<precision_t> batch(n_input_dims, batch_size, method == "fully_fused_jit" ? RM : CM);
-				GPUMatrix<precision_t, RM> bench_target(n_output_dims, batch_size);
+				// Qualify RM/CM: Iluvatar CoreX clang injects a global `RM`/`CM`
+				// (rounding-mode enum in __clang_cuda_ivcorex_intrinsics.h) that
+				// otherwise clashes with tcnn::RM/CM under `using namespace tcnn`.
+				GPUMatrixDynamic<precision_t> batch(n_input_dims, batch_size, method == "fully_fused_jit" ? tcnn::RM : tcnn::CM);
+				GPUMatrix<precision_t, tcnn::RM> bench_target(n_output_dims, batch_size);
 
 				cudaStream_t inference_stream;
 				CUDA_CHECK_THROW(cudaStreamCreate(&inference_stream));

@@ -38,7 +38,13 @@ namespace tcnn {
 
 __forceinline__ __device__ unsigned lane_id() {
 	unsigned ret;
+#if defined(__ILUVATAR__)
+	// ivcore11 backend rejects the NV PTX special register `%laneid`; use the
+	// portable NVVM builtin instead (verified to return correct 0..warpSize-1).
+	ret = __nvvm_read_ptx_sreg_laneid();
+#else
 	asm volatile("mov.u32 %0, %laneid;" : "=r"(ret));
+#endif
 	return ret;
 }
 

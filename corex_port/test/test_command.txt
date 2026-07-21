@@ -1,0 +1,17 @@
+# tiny-cuda-nn Iluvatar CoreX (ivcore11) test commands (GPU 1)
+. /etc/profile.d/corex.sh
+export LD_LIBRARY_PATH=/usr/local/openmpi/lib:/usr/local/corex/lib64:/usr/local/corex/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export PATH=/usr/local/corex/bin:$PATH
+export CUDA_VISIBLE_DEVICES=1
+
+# Catch2 unit tests (built from tests/*.cu, linked against libtiny-cuda-nn.a).
+# Reset the GPU between heavy runs to clear driver residue from any hung kernel:
+#   ixsmi -i 1 -r
+./test_jit_losses --durations yes    # JIT self-skips (cc<75) -> PASS
+./test_grid       --durations yes    # PASS
+./test_encodings  --durations yes    # PASS (47,186,016 assertions)
+./test_networks   --durations yes    # CutlassMLP GEMM livelocks on ivcore11 (terminal blocker #1)
+
+# Sample (learns an image); reference.jpg is produced via the manual bilinear
+# sampler; training uses CutlassMLP and hits the same GEMM livelock:
+./mlp_learning_an_image ../data/images/albert.jpg

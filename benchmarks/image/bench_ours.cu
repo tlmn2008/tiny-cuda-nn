@@ -90,8 +90,16 @@ void save_image(const T* image, int width, int height, int n_channels, int chann
 	save_stbi(image_ldr_host.data(), width, height, n_channels, filename.c_str());
 }
 
+// Iluvatar CoreX (ivcore11) does not expose the CUDA texture object API
+// (tex2D / cudaCreateTextureObject), so we sample a plain RGBA float device
+// buffer with manual bilinear filtering (normalized coords + clamp) that
+// reproduces cudaFilterModeLinear.
+__device__ inline int tcnn_clampi(int a, int lo, int hi) {
+	return a < lo ? lo : (a > hi ? hi : a);
+}
+
 template <uint32_t stride>
-__global__ void eval_image(uint32_t n_elements, cudaTextureObject_t texture, bool filter, int width, int height, float* __restrict__ xs_and_ys, float* __restrict__ result) {
+__global__ void eval_image(uint32_t n_elements, const float* __restrict__ image, bool filter, int width, int height, float* __restrict__ xs_and_ys, float* __restrict__ result) {
 	uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= n_elements) return;
 
@@ -104,13 +112,35 @@ __global__ void eval_image(uint32_t n_elements, cudaTextureObject_t texture, boo
 		pos.y = (roundf(pos.y * height - 0.5f) + 0.5f) / height;
 	}
 
-	float4 val = tex2D<float4>(texture, pos.x, pos.y);
-	result[output_idx + 0] = val.x;
-	result[output_idx + 1] = val.y;
-	result[output_idx + 2] = val.z;
+	float fx = pos.x * (float)width - 0.5f;
+	float fy = pos.y * (float)height - 0.5f;
+	int x0 = (int)floorf(fx);
+	int y0 = (int)floorf(fy);
+	float tx = fx - (float)x0;
+	float ty = fy - (float)y0;
+	int x1 = tcnn_clampi(x0 + 1, 0, width - 1);
+	int y1 = tcnn_clampi(y0 + 1, 0, height - 1);
+	x0 = tcnn_clampi(x0, 0, width - 1);
+	y0 = tcnn_clampi(y0, 0, height - 1);
 
-	for (uint32_t i = 3; i < stride; ++i) {
-		result[output_idx + i] = 1;
+	float val[4];
+	TCNN_PRAGMA_UNROLL
+	for (int c = 0; c < 4; ++c) {
+		float p00 = image[((y0 * width) + x0) * 4 + c];
+		float p10 = image[((y0 * width) + x1) * 4 + c];
+		float p01 = image[((y1 * width) + x0) * 4 + c];
+		float p11 = image[((y1 * width) + x1) * 4 + c];
+		float a = p00 * (1.0f - tx) + p10 * tx;
+		float b = p01 * (1.0f - tx) + p11 * tx;
+		val[c] = a * (1.0f - ty) + b * ty;
+	}
+
+	result[output_idx + 0] = val[0];
+	result[output_idx + 1] = val[1];
+	result[output_idx + 2] = val[2];
+
+	for (uint32_t j = 3; j < stride; ++j) {
+		result[output_idx + j] = 1;
 	}
 }
 
@@ -133,26 +163,9 @@ int main(int argc, char* argv[]) {
 		int width, height;
 		GPUMemory<float> image = load_image(argv[1], width, height);
 
-		// Second step: create a cuda texture out of this image. It'll be used to generate training data efficiently on the fly
-		cudaResourceDesc resDesc;
-		memset(&resDesc, 0, sizeof(resDesc));
-		resDesc.resType = cudaResourceTypePitch2D;
-		resDesc.res.pitch2D.devPtr = image.data();
-		resDesc.res.pitch2D.desc = cudaCreateChannelDesc(32, 32, 32, 32, cudaChannelFormatKindFloat);
-		resDesc.res.pitch2D.width = width;
-		resDesc.res.pitch2D.height = height;
-		resDesc.res.pitch2D.pitchInBytes = width * 4 * sizeof(float);
-
-		cudaTextureDesc texDesc;
-		memset(&texDesc, 0, sizeof(texDesc));
-		texDesc.filterMode = cudaFilterModeLinear;
-		texDesc.normalizedCoords = true;
-		texDesc.addressMode[0] = cudaAddressModeClamp;
-		texDesc.addressMode[1] = cudaAddressModeClamp;
-		texDesc.addressMode[2] = cudaAddressModeClamp;
-
-		cudaTextureObject_t texture;
-		CUDA_CHECK_THROW(cudaCreateTextureObject(&texture, &resDesc, &texDesc, nullptr));
+		// Second step: the RGBA float image buffer (`image`) is sampled directly
+		// with manual bilinear filtering (see eval_image); the CUDA texture object
+		// API is unavailable on Iluvatar CoreX.
 
 		default_rng_t rng{1337};
 
@@ -180,7 +193,7 @@ int main(int argc, char* argv[]) {
 
 		bool filter = false;
 
-		eval_image<3><<<n_blocks_linear(n_coords), n_threads_linear>>>(n_coords, texture, filter, width, height, xs_and_ys.data(), sampled_image.data());
+		eval_image<3><<<n_blocks_linear(n_coords), n_threads_linear>>>(n_coords, image.data(), filter, width, height, xs_and_ys.data(), sampled_image.data());
 
 		save_image(sampled_image.data(), sampling_width, sampling_height, 3, 3, "reference.jpg");
 
@@ -247,7 +260,7 @@ int main(int argc, char* argv[]) {
 					for (uint32_t j = 0; j < STEPS_INCREMENT; ++j) {
 						// Compute reference values at random coordinates
 						generate_random_uniform<float>(training_stream, rng, batch_size * num_dims_encoded, batch.data());
-						linear_kernel(eval_image<num_output_dims>, 0, training_stream, batch_size, texture, filter, width, height, batch.data(), bench_target.data());
+						linear_kernel(eval_image<num_output_dims>, 0, training_stream, batch_size, image.data(), filter, width, height, batch.data(), bench_target.data());
 
 						auto ctx = trainer->training_step(training_stream, GPUMatrix<float>{batch.data(), num_dims_encoded, batch_size}, bench_target);
 						if (j == STEPS_INCREMENT-1) {

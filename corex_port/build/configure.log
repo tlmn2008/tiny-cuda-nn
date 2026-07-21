@@ -1,0 +1,35 @@
+-- The CXX compiler identification is Clang 22.1.0
+-- The CUDA compiler identification is Clang 22.1.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/local/corex/bin/clang++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done
+-- Check for working CUDA compiler: /usr/local/corex/bin/clang++ - skipped
+-- Detecting CUDA compile features
+-- Detecting CUDA compile features - done
+-- Obtained CUDA architectures from environment variable TCNN_CUDA_ARCHITECTURES=ivcore11
+-- TCNN_HALF_PRECISION: ON
+-- Targeting CUDA architectures: ivcore11
+CMake Warning at CMakeLists.txt:239 (message):
+  Fully fused MLPs do not support GPU architectures of 70 or less.  Falling
+  back to CUTLASS MLPs.  Remove GPU architectures 70 and lower to allow
+  maximum performance
+
+
+-- Module support is disabled.
+-- Version: 9.0.0
+-- Build type: Release
+-- CXX_STANDARD: 17
+-- Performing Test has_std_17_flag
+-- Performing Test has_std_17_flag - Success
+-- Performing Test has_std_1z_flag
+-- Performing Test has_std_1z_flag - Success
+-- Required features: cxx_variadic_templates
+-- Performing Test HAS_NULLPTR_WARNING
+-- Performing Test HAS_NULLPTR_WARNING - Success
+-- Configuring done (2.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/repos/tiny-cuda-nn/build

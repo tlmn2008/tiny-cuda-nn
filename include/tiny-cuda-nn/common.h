@@ -83,9 +83,11 @@
 
 #include <tiny-cuda-nn/vec.h>
 
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) && !defined(__ILUVATAR__)
 static_assert(__CUDA_ARCH__ >= TCNN_MIN_GPU_ARCH * 10, "MIN_GPU_ARCH=" STR(TCNN_MIN_GPU_ARCH) "0 must bound __CUDA_ARCH__=" STR(__CUDA_ARCH__) " from below, but doesn't.");
 #endif
+// Iluvatar CoreX reports __CUDA_ARCH__=300 regardless of the (fp16-capable)
+// BI-V150 hardware, so the bound above cannot hold; it is bypassed above.
 
 namespace tcnn {
 

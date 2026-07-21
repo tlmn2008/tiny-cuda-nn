@@ -1,0 +1,23 @@
+# Iluvatar CoreX (ivcore11) build commands for tiny-cuda-nn
+# Environment
+. /etc/profile.d/corex.sh
+export LD_LIBRARY_PATH=/usr/local/openmpi/lib:/usr/local/corex/lib64:/usr/local/corex/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export PATH=/usr/local/corex/bin:$PATH
+export CUDA_VISIBLE_DEVICES=1            # this subagent is assigned GPU 1
+export TCNN_CUDA_ARCHITECTURES=ivcore11  # -> CMAKE_CUDA_ARCHITECTURES=ivcore11
+
+# Configure: RTC ON (needed so tests/library link the CudaRtcKernel symbols;
+# supports_jit_fusion() returns false on ivcore11 -> all JIT paths self-skip at
+# runtime, avoiding the NV-only mma PTX / IXRTC JIT that is unsupported here),
+# FP16 ON, tests + samples + benchmarks ON, Shampoo/cuBLAS-cuSolver OFF.
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DTCNN_BUILD_WITH_RTC=ON \
+  -DTCNN_HALF_PRECISION=ON \
+  -DTCNN_BUILD_TESTS=ON \
+  -DTCNN_BUILD_EXAMPLES=ON \
+  -DTCNN_BUILD_BENCHMARK=ON \
+  -DTCNN_ALLOW_CUBLAS_CUSOLVER=OFF
+
+# Build
+cmake --build build -j$(nproc)

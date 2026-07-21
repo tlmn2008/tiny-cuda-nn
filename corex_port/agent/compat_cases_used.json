@@ -1,0 +1,45 @@
+{
+  "compat_index": "iluvatar-cuda-base",
+  "cases_used": [
+    {
+      "case": "cvta-address-space",
+      "symptom": "__cvta_generic_to_shared not provided; NV 32-bit shared-address semantics",
+      "how_applied": "Added a low-32-bit shim; discovered the shim alone was insufficient because ivcore11 shared generic pointers carry a nonzero high-32 window base, then reconstructed (smem_base()|offset) in the CUTLASS shared load/store shims."
+    },
+    {
+      "case": "intrinsic-divergent-base",
+      "symptom": "divergent base ptr / NV PTX intrinsics rejected by llc backend",
+      "how_applied": "Replaced NV ld.global/st.global/ld.shared PTX in CUTLASS arch/memory.h + memory_sm75.h with generic C++."
+    },
+    {
+      "case": "cuda-arch-mismatch / cuda-prop-major-unreliable / iluvatar-macro-defined-probe",
+      "symptom": "__CUDA_ARCH__=300, cudaDeviceProp.major does not map to NV, NV numeric gates",
+      "how_applied": "Bypassed __CUDA_ARCH__/__CUDACC_VER static_asserts and enabled fp16 paths via defined(__ILUVATAR__) (stable across host/device/JIT passes)."
+    },
+    {
+      "case": "warp32-to-warp64",
+      "symptom": "warpSize=64 vs 32 breaks warp-level (shfl/ballot/reduce) and CUTLASS SIMT warp tile geometry",
+      "how_applied": "Identified as the root cause of the CutlassMLP SIMT GEMM livelock (blocker 1, terminal)."
+    },
+    {
+      "case": "simt-divergent-progress-deadlock",
+      "symptom": "no Volta+ Independent Thread Scheduling; spin/lock/divergent-progress algorithms deadlock",
+      "how_applied": "Considered as a contributing factor to the GEMM hang; combined with warp32-to-warp64 makes upstream NV CUTLASS SIMT unusable without ixCUTLASS."
+    },
+    {
+      "case": "texture-software-bridge",
+      "symptom": "bare SDK texture API (tex2D / cudaCreateTextureObject) unavailable / silently wrong",
+      "how_applied": "Replaced texture sampling in the sample and image benchmark with a manual bilinear sampler over a plain device buffer."
+    },
+    {
+      "case": "gpu-hang-reset",
+      "symptom": "driver residue after a hung/killed kernel -> subsequent cuda_init hangs even when ixsmi looks clean",
+      "how_applied": "Used 'ixsmi -i 1 -r' (GPU-1-only, leaving GPU 0's concurrent migration untouched) to reset between runs and obtain clean measurements."
+    },
+    {
+      "case": "nvrtc / IXRTC device-link limitations (ixrtc.md)",
+      "symptom": "JIT fusion needs NV mma PTX + cc>=75 + IXRTC device link",
+      "how_applied": "Kept RTC enabled for linking but relied on supports_jit_fusion()==false (cc=71) so JIT self-skips; classified JIT/FullyFused as terminal (blocker 2)."
+    }
+  ]
+}
