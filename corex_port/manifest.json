@@ -16,9 +16,8 @@
   "tests_failed": 1,
   "tests_skipped": 0,
   "upstream_assessment": {
-    "upstreamable": "partial",
-    "nvidia_compatible": "guarded",
-    "notes": "核心库(common.h 静态断言、common_device.h %laneid、vec.h fp16/half2 门控)全部以 __ILUVATAR__ 守卫或 ||defined(__ILUVATAR__) 追加，NVIDIA 的 __CUDA_ARCH__ 门控逐字节不变;sample/benchmark 的手写双线性替换 tex2D 为等价实现(仅样例);CUTLASS 子模块 shared 地址模型 patch 以 changes/cutlass.patch 交付未提交子模块。CoreX 强制 CutlassMLP 且 MLP GEMM 在 ivcore11 活锁(terminal)。回上游需将 CUTLASS 适配拆为 CoreX 专属后端。本仓无 fork remote，未推送。CLA 需签。"
+    "upstream_status": "blocked",
+    "notes": "核心库(common.h 静态断言、common_device.h %laneid、vec.h fp16/half2 门控)全部以 __ILUVATAR__ 守卫或 ||defined(__ILUVATAR__) 追加,NVIDIA 的 __CUDA_ARCH__ 门控逐字节不变。但 CoreX 强制走 CutlassMLP 且 MLP GEMM 在 ivcore11 活锁(terminal),CoreX 路径跑不出可用后端;回上游需将 CUTLASS 适配拆成 CoreX 专属后端。本仓无 fork remote,未推送。CLA 需签。"
   },
   "bugfixes": [],
   "github": {
