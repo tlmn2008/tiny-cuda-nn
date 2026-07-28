@@ -8,7 +8,6 @@
   "migration_finished_at": "2026-07-21T21:28:00Z",
   "sdk_version": "/usr/local/corex (CoreX 4.5.0, clang++, Driver 4.5.0)",
   "skill_version": "corex-CUDA-compatible-migration@1.0",
-
   "compile_status": "success",
   "test_status": "partial_pass",
   "overall_status": "blocked",
@@ -16,7 +15,12 @@
   "tests_passed": 5,
   "tests_failed": 1,
   "tests_skipped": 0,
-
+  "upstream_assessment": {
+    "upstreamable": "partial",
+    "nvidia_compatible": "guarded",
+    "notes": "核心库(common.h 静态断言、common_device.h %laneid、vec.h fp16/half2 门控)全部以 __ILUVATAR__ 守卫或 ||defined(__ILUVATAR__) 追加，NVIDIA 的 __CUDA_ARCH__ 门控逐字节不变;sample/benchmark 的手写双线性替换 tex2D 为等价实现(仅样例);CUTLASS 子模块 shared 地址模型 patch 以 changes/cutlass.patch 交付未提交子模块。CoreX 强制 CutlassMLP 且 MLP GEMM 在 ivcore11 活锁(terminal)。回上游需将 CUTLASS 适配拆为 CoreX 专属后端。本仓无 fork remote，未推送。CLA 需签。"
+  },
+  "bugfixes": [],
   "github": {
     "fork_url": "https://github.com/tlmn2008/tiny-cuda-nn",
     "branch": "corex-port",
@@ -27,7 +31,6 @@
     "push_status": "success",
     "pushed_at": "2026-07-21T21:32:00Z"
   },
-
   "local_logs": {
     "compile_log": "/home/repos/tiny-cuda-nn/corex_port/build/compile.log",
     "test_log": "/home/repos/tiny-cuda-nn/corex_port/test/test.log"
