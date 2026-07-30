@@ -6,7 +6,7 @@
   "source_branch": "master",
   "migration_started_at": "2026-07-21T17:30:00Z",
   "migration_finished_at": "2026-07-21T21:28:00Z",
-  "sdk_version": "/usr/local/corex (CoreX 4.5.0, clang++, Driver 4.5.0)",
+  "sdk_version": "CoreX 4.5.0.20260630",
   "skill_version": "corex-CUDA-compatible-migration@1.0",
   "compile_status": "success",
   "test_status": "partial_pass",
