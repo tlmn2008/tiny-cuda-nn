@@ -1,15 +1,16 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "repo": "tiny-cuda-nn",
+  "target": "BI-V150",
   "blockers": [
     {
       "id": "1",
-      "symptom": "CutlassMLP SIMT GEMM livelocks on ivcore11 (100% GPU util, never completes even a 16->32x2->16 / batch=4096 inference in 300s). This is the matmul path tiny-cuda-nn uses once FullyFusedMLP is disabled.",
-      "classification": "terminal",
-      "resolved": false,
+      "desc": "CutlassMLP SIMT GEMM livelocks on ivcore11 (100% GPU util, never completes even a 16->32x2->16 / batch=4096 inference in 300s). This is the matmul path tiny-cuda-nn uses once FullyFusedMLP is disabled.",
+      "verdict": "corex-issue",
+      "status": "open",
       "file": "dependencies/cutlass (OpClassSimt/Sm70 GEMM used by src/cutlass_mlp.cu)",
-      "final_verdict": "Upstream NVIDIA CUTLASS SIMT GEMM is fundamentally incompatible with ivcore11: warpSize=64 (vs 32) breaks CUTLASS's hardcoded warp/thread tile geometry and shuffle-based reductions, ivcore11 lacks Volta+ Independent Thread Scheduling, and the whole NV 32-bit shared-address model is emulated. A correct high-performance GEMM here needs Iluvatar's own ixCUTLASS, which is out of scope (cannot modify /usr/local/corex, cannot re-derive CUTLASS warp tiling within this migration). Classified terminal.",
-      "error_snippet": "test_networks: 'inference' and 'inference_mixed_precision' match -> SIGTERM (timeout) at test_common.h:153; GPU-Util 100%, no progress; ixgdb host stuck in sigsuspend.",
+      "error": "test_networks: 'inference' and 'inference_mixed_precision' match -> SIGTERM (timeout) at test_common.h:153; GPU-Util 100%, no progress; ixgdb host stuck in sigsuspend.",
+      "root_cause": "结论: Upstream NVIDIA CUTLASS SIMT GEMM is fundamentally incompatible with ivcore11: warpSize=64 (vs 32) breaks CUTLASS's hardcoded warp/thread tile geometry and shuffle-based reductions, ivcore11 lacks Volta+ Independent Thread Scheduling, and the whole NV 32-bit shared-address model is emulated. A correct high-performance GEMM here needs Iluvatar's own ixCUTLASS, which is out of scope (cannot modify /usr/local/corex, cannot re-derive CUTLASS warp tiling within this migration). Classified terminal.",
       "attempts": [
         {
           "action": "Force CutlassMLP over FullyFusedMLP by setting MIN_GPU_ARCH=60 (disables NV-mma fully-fused path).",
@@ -31,12 +32,12 @@
     },
     {
       "id": "2",
-      "symptom": "FullyFusedMLP + JIT fusion require NV TensorCore wmma/mma PTX, compute capability >= 7.5 and IXRTC device-linking. ivcore11 reports cc=71 and provides none of the NV mma PTX; IXRTC cannot device-link the fused kernels.",
-      "classification": "terminal",
-      "resolved": false,
+      "desc": "FullyFusedMLP + JIT fusion require NV TensorCore wmma/mma PTX, compute capability >= 7.5 and IXRTC device-linking. ivcore11 reports cc=71 and provides none of the NV mma PTX; IXRTC cannot device-link the fused kernels.",
+      "verdict": "corex-issue",
+      "status": "open",
       "file": "include/tiny-cuda-nn/fully_fused_mlp.cu, src/rtc_kernel.cu",
-      "final_verdict": "TensorCore fully-fused / JIT-fused MLP is a hardware+toolchain terminal blocker on ivcore11; the library gracefully falls back to (attempted) CutlassMLP. Classified terminal (feature unavailable), but non-fatal to the build because it self-disables.",
-      "error_snippet": "runtime: 'JIT: unsupported. Must use CUDA 11.8 and a GPU with compute capability 75 or higher, but got CUDA 13010 and compute capability 71.'",
+      "error": "runtime: 'JIT: unsupported. Must use CUDA 11.8 and a GPU with compute capability 75 or higher, but got CUDA 13010 and compute capability 71.'",
+      "root_cause": "结论: TensorCore fully-fused / JIT-fused MLP is a hardware+toolchain terminal blocker on ivcore11; the library gracefully falls back to (attempted) CutlassMLP. Classified terminal (feature unavailable), but non-fatal to the build because it self-disables.",
       "attempts": [
         {
           "action": "Set MIN_GPU_ARCH=60 so fully_fused MLP is compiled out and CutlassMLP is used instead.",
@@ -50,12 +51,12 @@
     },
     {
       "id": "3",
-      "symptom": "__cvta_generic_to_shared builtin missing while CuTe enables CUTE_CLANG_SUPPORTS_CVTA_GENERIC_TO_SHARED (clang_major>=14).",
-      "classification": "workaround-able",
-      "resolved": true,
+      "desc": "__cvta_generic_to_shared builtin missing while CuTe enables CUTE_CLANG_SUPPORTS_CVTA_GENERIC_TO_SHARED (clang_major>=14).",
+      "verdict": "workaround",
+      "status": "fixed",
       "file": "dependencies/cutlass/include/cute/arch/util.hpp",
-      "final_verdict": "shim added under __ILUVATAR__",
-      "error_snippet": "error: use of undeclared identifier '__cvta_generic_to_shared'",
+      "error": "error: use of undeclared identifier '__cvta_generic_to_shared'",
+      "root_cause": "结论: shim added under __ILUVATAR__",
       "attempts": [
         {
           "action": "Provide an ivcore11 shim returning the low 32 bits (the shared-window offset, matching NV cvta.to.shared semantics).",
@@ -65,12 +66,12 @@
     },
     {
       "id": "4",
-      "symptom": "cuMemCreate (CUDA virtual-memory-management) returns IX_ERROR_NOT_SUPPORTED although the device attribute VIRTUAL_ADDRESS_MANAGEMENT_SUPPORTED and cuMemAddressReserve both succeed, so tiny-cuda-nn's GPUMemoryArena crashed on first enlarge.",
-      "classification": "workaround-able",
-      "resolved": true,
+      "desc": "cuMemCreate (CUDA virtual-memory-management) returns IX_ERROR_NOT_SUPPORTED although the device attribute VIRTUAL_ADDRESS_MANAGEMENT_SUPPORTED and cuMemAddressReserve both succeed, so tiny-cuda-nn's GPUMemoryArena crashed on first enlarge.",
+      "verdict": "workaround",
+      "status": "fixed",
       "file": "src/common_host.cu, include/tiny-cuda-nn/gpu_memory.h",
-      "final_verdict": "VMM probed at runtime; fallback allocator used on ivcore11",
-      "error_snippet": "gpu_memory.h:563 cuMemCreate(...) failed: IX_ERROR_NOT_SUPPORTED",
+      "error": "gpu_memory.h:563 cuMemCreate(...) failed: IX_ERROR_NOT_SUPPORTED",
+      "root_cause": "结论: VMM probed at runtime; fallback allocator used on ivcore11",
       "attempts": [
         {
           "action": "Make cuda_supports_virtual_memory() actually probe cuMemGetAllocationGranularity + cuMemCreate (cached per device) instead of trusting the misleading attribute; fall back to regular cudaMalloc-backed arena.",
@@ -84,12 +85,12 @@
     },
     {
       "id": "5",
-      "symptom": "lane_id() used NV PTX special register 'mov.u32 %0, %laneid;' which the ivcore11 clang backend rejects.",
-      "classification": "workaround-able",
-      "resolved": true,
+      "desc": "lane_id() used NV PTX special register 'mov.u32 %0, %laneid;' which the ivcore11 clang backend rejects.",
+      "verdict": "workaround",
+      "status": "fixed",
       "file": "include/tiny-cuda-nn/common_device.h",
-      "final_verdict": "portable NVVM builtin used",
-      "error_snippet": "error: invalid % escape in inline assembly string",
+      "error": "error: invalid % escape in inline assembly string",
+      "root_cause": "结论: portable NVVM builtin used",
       "attempts": [
         {
           "action": "Use the portable builtin __nvvm_read_ptx_sreg_laneid() under __ILUVATAR__.",
@@ -99,12 +100,12 @@
     },
     {
       "id": "6",
-      "symptom": "static_asserts on __CUDA_ARCH__ (reported 300) and __CUDACC_VER_MAJOR__/MINOR__ (not defined by corex clang) failed the build.",
-      "classification": "workaround-able",
-      "resolved": true,
+      "desc": "static_asserts on __CUDA_ARCH__ (reported 300) and __CUDACC_VER_MAJOR__/MINOR__ (not defined by corex clang) failed the build.",
+      "verdict": "workaround",
+      "status": "fixed",
       "file": "include/tiny-cuda-nn/common.h, src/common_host.cu",
-      "final_verdict": "arch/version gates bypassed on ivcore11",
-      "error_snippet": "use of undeclared identifier '__CUDACC_VER_MINOR__'; MIN_GPU_ARCH bound must bound __CUDA_ARCH__",
+      "error": "use of undeclared identifier '__CUDACC_VER_MINOR__'; MIN_GPU_ARCH bound must bound __CUDA_ARCH__",
+      "root_cause": "结论: arch/version gates bypassed on ivcore11",
       "attempts": [
         {
           "action": "Guard both static_asserts with !defined(__ILUVATAR__); ivcore11 BI-V150 is fp16-capable and CUDA-11+ class despite the misreported macros.",
@@ -114,12 +115,12 @@
     },
     {
       "id": "7",
-      "symptom": "half-precision intrinsics (__hfma, atomicAdd(__half2)) were gated behind __CUDA_ARCH__>=600, disabled on ivcore11 (reports 300).",
-      "classification": "workaround-able",
-      "resolved": true,
+      "desc": "half-precision intrinsics (__hfma, atomicAdd(__half2)) were gated behind __CUDA_ARCH__>=600, disabled on ivcore11 (reports 300).",
+      "verdict": "workaround",
+      "status": "fixed",
       "file": "include/tiny-cuda-nn/vec.h",
-      "final_verdict": "fp16 paths enabled on ivcore11",
-      "error_snippet": "n/a (would fall back to slow/soft paths or fail vector specializations)",
+      "error": "n/a (would fall back to slow/soft paths or fail vector specializations)",
+      "root_cause": "结论: fp16 paths enabled on ivcore11",
       "attempts": [
         {
           "action": "Add '|| defined(__ILUVATAR__)' to the fp16 capability gates.",
@@ -129,12 +130,12 @@
     },
     {
       "id": "8",
-      "symptom": "CUDA texture object API (tex2D / cudaCreateTextureObject) unavailable on ivcore11 -> sample and image benchmark failed to compile.",
-      "classification": "workaround-able",
-      "resolved": true,
+      "desc": "CUDA texture object API (tex2D / cudaCreateTextureObject) unavailable on ivcore11 -> sample and image benchmark failed to compile.",
+      "verdict": "workaround",
+      "status": "fixed",
       "file": "samples/mlp_learning_an_image.cu, benchmarks/image/bench_ours.cu",
-      "final_verdict": "software bilinear sampler replaces texture API",
-      "error_snippet": "error: use of undeclared identifier 'tex2D'",
+      "error": "error: use of undeclared identifier 'tex2D'",
+      "root_cause": "结论: software bilinear sampler replaces texture API",
       "attempts": [
         {
           "action": "Replace texture sampling with a manual bilinear sampler over the plain RGBA float device buffer (reproduces cudaFilterModeLinear + normalizedCoords + clamp).",
@@ -144,12 +145,12 @@
     },
     {
       "id": "9",
-      "symptom": "'RM'/'CM' ambiguous in bench_mlp_ours: corex clang injects a global RM/CM (rounding-mode enum in __clang_cuda_ivcorex_intrinsics.h) that clashes with tcnn::RM/CM under 'using namespace tcnn'.",
-      "classification": "workaround-able",
-      "resolved": true,
+      "desc": "'RM'/'CM' ambiguous in bench_mlp_ours: corex clang injects a global RM/CM (rounding-mode enum in __clang_cuda_ivcorex_intrinsics.h) that clashes with tcnn::RM/CM under 'using namespace tcnn'.",
+      "verdict": "workaround",
+      "status": "fixed",
       "file": "benchmarks/mlp/bench_mlp_ours.cu",
-      "final_verdict": "explicit tcnn:: qualification",
-      "error_snippet": "error: reference to 'RM' is ambiguous ... candidate '__clang_cuda_ivcorex_intrinsics.h:219: RM = 2' vs 'tcnn::RM'",
+      "error": "error: reference to 'RM' is ambiguous ... candidate '__clang_cuda_ivcorex_intrinsics.h:219: RM = 2' vs 'tcnn::RM'",
+      "root_cause": "结论: explicit tcnn:: qualification",
       "attempts": [
         {
           "action": "Qualify the uses as tcnn::RM / tcnn::CM.",
