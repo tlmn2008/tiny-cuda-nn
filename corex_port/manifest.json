@@ -20,6 +20,10 @@
     "notes": "核心库(common.h 静态断言、common_device.h %laneid、vec.h fp16/half2 门控)全部以 __ILUVATAR__ 守卫或 ||defined(__ILUVATAR__) 追加,NVIDIA 的 __CUDA_ARCH__ 门控逐字节不变。但 CoreX 强制走 CutlassMLP 且 MLP GEMM 在 ivcore11 活锁(terminal),CoreX 路径跑不出可用后端;回上游需将 CUTLASS 适配拆成 CoreX 专属后端。本仓无 fork remote,未推送。CLA 需签。"
   },
   "bugfixes": [],
+  "defects_summary": {
+    "count": 1,
+    "high_confidence": 0
+  },
   "github": {
     "fork_url": "https://github.com/tlmn2008/tiny-cuda-nn",
     "branch": "corex-port",

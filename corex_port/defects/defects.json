@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "repo": "tiny-cuda-nn",
+  "target": "BI-V150",
+  "sdk_version": "CoreX 4.5.0.20260630",
+  "defects": [
+    {
+      "id": "cutlass-simt-gemm-livelock",
+      "defect_key": "other:simt-no-its-forward-progress",
+      "desc": "CutlassMLP 的 SIMT GEMM 在 ivcore11 上活锁(GPU-Util 100%、无任何进度,连 16->32x2->16/batch=4096 推理 300s 也跑不完),test_networks 被超时杀死(hang)。",
+      "suspected_component": "other",
+      "component_detail": "无 Volta+ 独立线程调度(ITS)导致 CUTLASS SIMT GEMM 的 warp 内自旋/收敛依赖前向进度而活锁;叠加 warpSize=64 破坏其硬编码 warp/thread tile 几何与 shuffle 归约、32 位共享地址模型被仿真",
+      "confidence": "medium",
+      "symptom": "hang",
+      "affected_tests": [
+        "test_networks — 'inference' 与 'inference_mixed_precision' 用例:CutlassMLP GEMM 活锁,120s 超时 SIGTERM(test_common.h:153)"
+      ],
+      "error": "test_networks: SIGTERM (timeout) at test_common.h:153; GPU-Util 100%, no progress; ixgdb host stuck in sigsuspend",
+      "root_cause_hypothesis": "ivcore11 缺少 Volta+ 独立线程调度(ITS),同 warp 内分支/自旋无法保证前向进度;上游 NVIDIA CUTLASS SIMT GEMM 依赖 warp 内线程协作收敛,在无 ITS 的弱前向进度模型下形成活锁(自旋锁式)。这是 SDK/硬件线程调度语义层面的缺口,而非纯上游 bug(同代码在 NVIDIA 正常完成)。",
+      "evidence": "在干净 GPU(ixsmi -i 1 -r 复位排除驱动残留)上重跑,reference.jpg(bilinear)与 'Beginning optimization' 打印后 CutlassMLP 训练步 90s 内无 Step#0、GPU-Util 恒 100%,确认活锁而非崩溃/超时抖动;去除 CUTLASS 中 NV 专有 PTX、修正 32 位共享地址截断后,死锁(Util 0%)转为运行中活锁(Util 100%),隔离出前向进度/线程调度为最后变量。运行期活锁,难以脱离 CUTLASS 上下文做独立最小件(confidence=medium);同 defect_key 已在 stdgpu 以 medium 登记(自旋锁 CAS 死锁)。",
+      "blocker_ref": "1",
+      "ref": "iluvatar-cuda-base: 无 ITS 前向进度 / 自旋锁死锁; 参见 stdgpu simt-no-its-cas-lock-deadlock"
+    }
+  ],
+  "notes": "tiny-cuda-nn 仅一个疑似 SDK 缺陷簇:CutlassMLP 的 SIMT GEMM 因 ivcore11 无 ITS 前向进度而活锁,导致唯一失败用例 test_networks 超时(other:simt-no-its-forward-progress,跨仓复用键,medium,无独立最小件)。另一 corex-issue blocker(id=2:FullyFusedMLP/JIT 需 NV TensorCore mma PTX 且 cc>=7.5,ivcore11 报 cc=71)在运行期由 supports_jit_fusion()==false 优雅自跳过(test_jit_losses PASS),无失败/为规避 SDK bug 的 skip 用例,属硬件特性不可用的编译可行性说明,按 SOP 不升级为 defect。not-corex/已修 workaround 不在此。"
+}
